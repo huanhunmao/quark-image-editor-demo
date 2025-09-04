@@ -35,6 +35,9 @@ export default function App(){
   const { img, setImg, load } = useImage()
   const history = useRef(new HistoryStack(30))
   const [thumbs, setThumbs] = useState([]) 
+  const [layers, setLayers] = useState([]) // { id, type:'sticker'|'text', x, y, text?, emoji?, fontSize? }
+  const [activeLayerId, setActiveLayerId] = useState(null)
+
 
   // draw function
   const draw = () => {
@@ -57,6 +60,24 @@ export default function App(){
     ctx.filter = `brightness(${brightness}%) blur(${blur}px) grayscale(${grayscale}%)`
     ctx.drawImage(img, -w/2, -h/2, w, h)
     ctx.restore()
+    // 叠加：贴纸/文本层（位于当前 canvas 坐标系）
+    layers.forEach(l => {
+    if (l.type === 'sticker') {
+        ctx.save()
+        ctx.font = `${l.size || 72}px system-ui, Apple Color Emoji, Segoe UI Emoji`
+        ctx.textBaseline = 'top'
+        ctx.fillText(l.emoji || '😀', l.x || 10, l.y || 10)
+        ctx.restore()
+    } else if (l.type === 'text') {
+        ctx.save()
+        ctx.font = `${l.size || 32}px ui-sans-serif, system-ui, Arial`
+        ctx.fillStyle = l.color || '#ffffff'
+        ctx.textBaseline = 'top'
+        ctx.fillText(l.text || '双击编辑', l.x || 10, l.y || 10)
+        ctx.restore()
+    }
+    })
+
   }
 
   // push current canvas to history
@@ -102,12 +123,58 @@ export default function App(){
     await load(file)
   }
 
-  useEffect(() => {
-    const c = canvasRef.current
-    const cctx = c.getContext('2d')
-    setCtx(cctx)
-  }, [])
+useEffect(() => {
+  const overlay = viewRef.current
+  if(!overlay) return
+  let dragging = null
+  const hitTest = (x,y) => {
+    // 简单命中：按文本/贴纸大致范围，实际可加宽高测量
+    for (let i = layers.length-1; i >= 0; i--) {
+      const l = layers[i]
+      const w = (l.type==='sticker' ? (l.size||72) : Math.max((l.text||'').length* (l.size||32)*0.6, 60))
+      const h = (l.size||32) * 1.2
+      if (x>=l.x && x<=l.x+w && y>=l.y && y<=l.y+h) return l
+    }
+    return null
+  }
+  const onDown = (e) => {
+    if (isCropping) return // 裁剪模式优先
+    const rect = overlay.getBoundingClientRect()
+    const x = e.clientX - rect.left, y = e.clientY - rect.top
+    const hit = hitTest(x,y)
+    if (hit) {
+      dragging = { id: hit.id, dx: x - hit.x, dy: y - hit.y }
+      setActiveLayerId(hit.id)
+    }
+  }
+  const onMove = (e) => {
+    if(!dragging) return
+    const rect = overlay.getBoundingClientRect()
+    const x = e.clientX - rect.left, y = e.clientY - rect.top
+    setLayers(ls => ls.map(l => l.id===dragging.id ? {...l, x: x - dragging.dx, y: y - dragging.dy} : l))
+    draw()
+  }
+  const onUp = () => {
+    if (dragging) { dragging = null; snapshot() }
+  }
+  overlay.addEventListener('mousedown', onDown)
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup', onUp)
+  return () => {
+    overlay.removeEventListener('mousedown', onDown)
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup', onUp)
+  }
+}, [isCropping, layers, ctx, img, scale, rotation, brightness, blur, grayscale])
 
+    useEffect(() => {
+  const c = canvasRef.current
+  if (!c) return
+  const cctx = c.getContext('2d')
+  setCtx(cctx)
+}, [])
+
+    
   useEffect(() => { draw() }, [img, scale, rotation, brightness, blur, grayscale])
 
   // After first draw for an image, snapshot to history
@@ -273,6 +340,30 @@ useHotkeys({
             <input className="range" type="range" min="0" max="100" value={grayscale} onChange={e=>setGrayscale(+e.target.value)} />
             <span className="kbd">{grayscale}%</span>
                   </div>
+        <p className="section-title">图层</p>
+            <div className="row">
+            <button onClick={() => {
+                const id = crypto.randomUUID?.() || String(Date.now())
+                setLayers(v => [...v, { id, type:'sticker', emoji:'😀', x:20, y:20, size:72 }])
+                setActiveLayerId(id)
+                setTimeout(snapshot, 0)
+            }}>+ 贴纸</button>
+            <button onClick={() => {
+                const id = crypto.randomUUID?.() || String(Date.now())
+                setLayers(v => [...v, { id, type:'text', text:'编辑文本', x:20, y:120, size:32, color:'#fff' }])
+                setActiveLayerId(id)
+                setTimeout(snapshot, 0)
+            }}>+ 文本</button>
+            </div>
+            <div className="row" style={{flexDirection:'column', alignItems:'stretch'}}>
+            {layers.map(l => (
+                <button key={l.id} onClick={()=>setActiveLayerId(l.id)}
+                style={{textAlign:'left', border:'1px solid #2b3645', borderRadius:8, padding:'6px 8px', margin:'4px 0',
+                background: activeLayerId===l.id? '#0b1220':'#111827', color:'#e5e7eb'}}>
+                {l.type==='sticker' ? `贴纸：${l.emoji}` : `文本：${l.text}`}
+                </button>
+            ))}
+            </div>
          <div className="row" style={{flexDirection:'column', alignItems:'stretch'}}>
             <p className="section-title">历史记录</p>
             <div style={{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:8, maxHeight:240, overflow:'auto'}}>
