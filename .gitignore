@@ -1,1 +1,16 @@
-node_modules
+# dependencies
+node_modules/
+.pnpm-store/
+yarn.lock
+package-lock.json
+
+# build output
+dist/
+*.log
+
+# editor
+.vscode/
+.idea/
+
+# misc
+.DS_Store
