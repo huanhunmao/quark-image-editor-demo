@@ -192,6 +192,33 @@ export default function App(){
       window.removeEventListener('mouseup', onUp)
     }
   }, [isCropping])
+    
+    // ✅ 快捷键映射（Cmd/Ctrl + ...）
+const useHotkeys = (handlers) => {
+  React.useEffect(() => {
+    const onKey = (e) => {
+      const cmd = e.metaKey || e.ctrlKey
+      const shift = e.shiftKey
+      if (cmd && !shift && e.key.toLowerCase() === 'z') { e.preventDefault(); handlers.undo?.() }
+      else if (cmd && shift && e.key.toLowerCase() === 'z') { e.preventDefault(); handlers.redo?.() }
+      else if (cmd && e.key === '+') { e.preventDefault(); handlers.zoomIn?.() }
+      else if (cmd && e.key === '-') { e.preventDefault(); handlers.zoomOut?.() }
+      else if (e.key.toLowerCase() === 'r') { e.preventDefault(); handlers.rotate?.() }
+      else if (cmd && e.key.toLowerCase() === 's') { e.preventDefault(); handlers.exportImg?.() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [handlers])
+}
+
+useHotkeys({
+  undo, 
+  redo, 
+  zoomIn: () => doScale(0.1),
+  zoomOut: () => doScale(-0.1),
+  rotate: () => doRotate(90),
+  exportImg: () => exportImage()
+})
 
   return (
     <div>
