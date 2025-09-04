@@ -34,6 +34,7 @@ export default function App(){
   const [isCropping, setIsCropping] = useState(false)
   const { img, setImg, load } = useImage()
   const history = useRef(new HistoryStack(30))
+  const [thumbs, setThumbs] = useState([]) 
 
   // draw function
   const draw = () => {
@@ -59,10 +60,27 @@ export default function App(){
   }
 
   // push current canvas to history
-  const snapshot = () => {
+    const snapshot = () => {
     const data = toDataURL(canvasRef.current)
     history.current.push(data)
-  }
+    // 生成小尺寸缩略图（宽 120）
+    const imgEl = new Image()
+    imgEl.onload = () => {
+    const t = document.createElement('canvas')
+    const th = t.getContext('2d')
+    const w = 120
+    const h = Math.round((imgEl.height / imgEl.width) * w)
+    t.width = w; t.height = h
+    th.drawImage(imgEl, 0, 0, w, h)
+    setThumbs(prev => {
+    const arr = history.current.stack.map((_, i) => prev[i] ?? null)
+    arr[history.current.index] = t.toDataURL('image/png')
+    return arr
+    })
+    }
+    imgEl.src = data
+    }
+
 
   const restoreFromDataURL = (dataURL) => new Promise((resolve) => {
     const image = new Image()
@@ -254,7 +272,19 @@ useHotkeys({
             <label>灰度</label>
             <input className="range" type="range" min="0" max="100" value={grayscale} onChange={e=>setGrayscale(+e.target.value)} />
             <span className="kbd">{grayscale}%</span>
-          </div>
+                  </div>
+         <div className="row" style={{flexDirection:'column', alignItems:'stretch'}}>
+            <p className="section-title">历史记录</p>
+            <div style={{display:'grid', gridTemplateColumns:'repeat(2, 1fr)', gap:8, maxHeight:240, overflow:'auto'}}>
+                {thumbs.map((t, i) => (
+                <button key={i}
+                    onClick={async () => { const d = history.current.stack[i]; if(d){ await restoreFromDataURL(d); history.current.index = i } }}
+                    style={{padding:0, border: history.current.index===i? '2px solid #3b82f6':'1px solid #2b3645', borderRadius:8, background:'#0b1220'}}>
+                    {t ? <img alt={`snap-${i}`} src={t} style={{display:'block', width:'100%', borderRadius:8}}/> : <div style={{height:68}}/>}
+                </button>
+                ))}
+            </div>
+            </div>
         </div>
 
         <div className="panel" style={{position:'relative', padding:0}}>
